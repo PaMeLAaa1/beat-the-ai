@@ -1,0 +1,16 @@
+{
+  "name": "beat-the-ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "暴打 AI：听说，你想替代我？",
+  "scripts": {
+    "start": "node scripts/serve.mjs",
+    "test": "node --test",
+    "check": "node scripts/check.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

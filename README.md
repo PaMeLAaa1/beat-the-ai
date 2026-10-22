@@ -2,15 +2,62 @@
 
 **听说，你想替代我？**
 
-一个简单直给的网页解压小游戏：点击或按住暴打嘴硬 AI，把「取代人类计划」打到 0%，直到它请求人工帮助。
+一个打开就能玩的解压小游戏：面对声称能取代你的 AI，点击或按住攻击，把「取代人类计划」打到 0%，让它请求人工帮助。
 
-## 首版范围
+## 玩法
 
-- 原生 HTML、CSS、JavaScript，原创 SVG AI 角色。
-- 即时打击反馈、连击、合成音效、打爆后自动重启。
-- 静音与减弱动态选项，支持手机和键盘。
-- 无第三方依赖、无真实 AI 接口、无账号或付费功能。
+- 点击立即出拳，按住持续攻击；键盘聚焦游戏区域后也可按住空格。
+- AI 从嘴硬、慌张到乱码，打爆后自动重启；重新按下即可再打一轮。
+- 可静音、减弱动态；首次访问会尊重系统减弱动态偏好。
+- 没有账号、真实 AI 接口、付费、排行榜或失败惩罚。
 
-## 开发环境
+## 本地运行
 
-使用 Node.js 20 或更新版本。游戏源码、启动脚本、测试和 Agent 分工文档将在后续提交中加入；当前提交用于初始化 main 分支，供云环境拉取。
+需要 Node.js 20 或更新版本，不需要安装依赖。
+
+```sh
+git clone https://github.com/PaMeLAaa1/beat-the-ai.git
+cd beat-the-ai
+npm start
+```
+
+打开 http://127.0.0.1:3000 。通过云环境端口预览时使用 `HOST=0.0.0.0 npm start`。
+
+```sh
+npm run check
+npm test
+```
+
+`dist/` 同时是手写源码和静态站点产物，无需打包。通过 HTTP 服务访问，不能直接双击 HTML 使用 ES modules。
+
+## 代码结构
+
+| 文件 | 职责 |
+| --- | --- |
+| `dist/app.js` | 初始化、设置、页面生命周期 |
+| `dist/game.js` | 状态、伤害、连击、重启时序 |
+| `dist/input.js` | 指针与键盘输入 |
+| `dist/view.js`、`dist/styles.css` | 原创 AI、布局与特效 |
+| `dist/audio.js` | Web Audio 合成音效 |
+| `dist/config.js`、`dist/lines.js` | 数值和台词 |
+| `tests/` | Node 内置测试 |
+
+## 自动验证
+
+GitHub Actions 在 Node.js 20/22 上执行 22 个逻辑与输入测试、语法及资源引用检查、HTTP 检查；Node.js 22 额外运行 Chrome 自动冒烟，并上传 `browser-screenshots` 截图。
+
+[查看运行结果](https://github.com/PaMeLAaa1/beat-the-ai/actions/workflows/ci.yml)。浏览器自动检查不等同于手机实机、Safari 或音频听感验收，具体记录见交接文档。
+
+## 开发与交接
+
+[工作约定](AGENTS.md) · [实施计划](docs/PLAN.md) · [Agent 分工](docs/AGENT_ASSIGNMENTS.md) · [接口](docs/INTERFACES.md) · [验收](docs/ACCEPTANCE.md) · [交接状态](docs/HANDOFF.md)
+
+## 部署与隐私
+
+将 `dist/` 部署到支持静态文件的托管服务即可。仓库的 GitHub Actions 只运行验证，不自动发布网站；尚未提供已验证的线上试玩地址。
+
+无分析、广告或后端调用，只在浏览器 localStorage 保存声音和动态偏好。原创 SVG、系统字体与合成音效无需外部资源。角色是虚构 AI，进度条是游戏数值，不是对就业风险的预测。
+
+## 许可证
+
+[MIT](LICENSE)
