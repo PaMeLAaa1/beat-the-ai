@@ -32,6 +32,11 @@ jobs:
           curl --fail --silent http://127.0.0.1:3000/app.js > /dev/null
           curl --fail --silent http://127.0.0.1:3000/styles.css > /dev/null
           node -e "const html=require('node:fs').readFileSync('/tmp/beat-the-ai-index.html','utf8'); if(!html.includes('暴打 AI') || !html.includes('./app.js')) process.exit(1)"
+      - name: Install Chinese font for browser checks
+        if: matrix.node == '22'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
       - name: Browser smoke and screenshots
         if: matrix.node == '22'
         run: node scripts/browser-smoke.mjs

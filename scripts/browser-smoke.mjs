@@ -147,7 +147,7 @@ try {
 
   const playtestFailures = [];
   async function checkCase(name, action) {
-    try { await action(); console.log('PLAYTEST_PASS ' + name); }
+    try { if (await action() !== false) console.log('PLAYTEST_PASS ' + name); }
     catch (error) { playtestFailures.push(name + ': ' + error.message); console.error('PLAYTEST_FAIL ' + name + ': ' + error.message); }
   }
   async function reloadGame() {
@@ -242,7 +242,7 @@ try {
       }
       if (!hidden) {
         console.log('PLAYTEST_SKIP background: headless Chrome did not hide the original tab');
-        return;
+        return false;
       }
       const before = await hitCount();
       await delay(700);

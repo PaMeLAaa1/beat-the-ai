@@ -190,3 +190,26 @@ test('dispose releases input, removes listeners and restores owned DOM settings'
   existing.binding.dispose();
   assert.equal(existing.target.getAttribute('tabindex'), '3');
 });
+
+test('moving focus away from arena releases held Space and pointer input', () => {
+  const h = fixture();
+  const space = { code: 'Space', key: ' ' };
+  h.target.focus();
+  h.target.emit('keydown', space);
+  h.doc.activeElement = { tagName: 'BUTTON' };
+  h.target.emit('blur');
+  h.tick(500);
+  assert.equal(h.game.getState().totalHits, 1, 'Space must stop when focus leaves arena');
+  h.at(600);
+  h.target.focus();
+  h.target.emit('keydown', space);
+  h.win.emit('keyup', space);
+  assert.equal(h.game.getState().totalHits, 2, 'refocusing allows a new Space press');
+  h.at(800);
+  h.target.emit('pointerdown');
+  h.target.emit('blur');
+  h.tick(1300);
+  assert.equal(h.game.getState().totalHits, 3, 'pointer hold must also stop after focus leaves');
+  assert.equal(h.target.captures.size, 0);
+  h.binding.dispose();
+});
