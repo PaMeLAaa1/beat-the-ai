@@ -32,3 +32,13 @@ jobs:
           curl --fail --silent http://127.0.0.1:3000/app.js > /dev/null
           curl --fail --silent http://127.0.0.1:3000/styles.css > /dev/null
           node -e "const html=require('node:fs').readFileSync('/tmp/beat-the-ai-index.html','utf8'); if(!html.includes('暴打 AI') || !html.includes('./app.js')) process.exit(1)"
+      - name: Browser smoke and screenshots
+        if: matrix.node == '22'
+        run: node scripts/browser-smoke.mjs
+      - name: Save browser screenshots
+        if: always() && matrix.node == '22'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: browser-screenshots
+          path: .artifacts/
+          if-no-files-found: ignore
