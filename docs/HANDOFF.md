@@ -4,7 +4,7 @@
 
 项目：[PaMeLAaa1/beat-the-ai](https://github.com/PaMeLAaa1/beat-the-ai)。首版实现与合并记录：[PR #1](https://github.com/PaMeLAaa1/beat-the-ai/pull/1)。PR 合并后使用 main；如 PR 仍显示 Open，请先切换 feat/playable-v1。
 
-已提交完整 25 个项目文件：静态游戏、原创 SVG AI、音效、输入与玩法模块、22 个测试、服务器、检查脚本、CI 和开发文档。点击或按住攻击，将「取代人类计划」从 100% 打到 0%，自动重启后重新按下可再玩。
+已提交完整 25 个项目文件：静态游戏、原创 SVG AI、音效、输入与玩法模块、23 个测试、服务器、检查脚本、CI 和开发文档。点击或按住攻击，将「取代人类计划」从 100% 打到 0%，自动重启后重新按下可再玩。
 
 没有真实 AI 接口，不需要密钥、数据库或依赖安装。不要因为是「AI 游戏」而添加 LLM 调用。
 
@@ -20,6 +20,23 @@
 Chrome 检查脚本为 `scripts/browser-smoke.mjs`，需要 Node.js 22+ 和本机 Chrome（默认 `google-chrome`，可用 `BROWSER` 指定路径）。它生成桌面、人工接管、390px 手机视口截图。第 1 次运行的上传步骤忽略了隐藏目录，未上传截图；后续 CI 配置已修正为显式上传 `.artifacts/*.png`，截图以对应成功运行的 `browser-screenshots` artifact 为准。
 
 此前 V8 适配检查只是辅助，不计入上述实际 Node/Chrome 验证。输入单元测试中的 DOM 是模拟对象；Chrome 检查另行使用真实浏览器输入事件。
+
+## 第二轮浏览器试玩与修复
+
+2026-10-22，用户要求再次试玩。首次扩展检查在真实 Chrome 中复现：按住 Space 后将焦点移到设置按钮，攻击仍然继续。输入模块现已在游戏区域失焦时释放键盘和指针按住状态，并增加回归测试。变更记录：[PR #2](https://github.com/PaMeLAaa1/beat-the-ai/pull/2)。
+
+修复提交 `53d15f53ac0cdd07e279ac74d3b2e27110c2de14` 的 [完整试玩运行](https://github.com/PaMeLAaa1/beat-the-ai/actions/runs/39741565413) 全部通过：
+
+- Node.js 20/22 各 23 个单元测试通过。
+- Chrome 真实键盘事件确认：Space 按住后焦点移走，攻击立即停止。
+- CDP 触摸模拟：首触攻击，第二触点不额外计分，touchCancel、拖出区域后松手均停止连击。
+- 新开标签并实际观察到 document.hidden 后返回，确认不补打、不继续按住攻击。
+- 普通动态、开启音效配置下连续运行约 122 秒，共 29 轮、725 拳；临时特效节点峰值 30（上限 36），结束后归零，无未捕获浏览器异常。没有实际聆听音频。
+- 人工查看 Chrome 截图：桌面、320×568、390×844 与人工接管画面。320/360/390px 自动布局检查均通过，核心 AI 和进度在首屏，设置按钮触控区域至少 44px。
+
+测试 runner 原先缺中文字体，导致截图出现方框；CI 安装 fonts-noto-cjk 后重新截图，中文显示正常。网站本身仍只使用系统字体，没有新增外部字体请求。
+
+长跑使用 `PLAYTEST_DURATION_MS=120000 node scripts/browser-smoke.mjs`。常规 CI 保留新增的交互和小屏检查；两分钟长跑按需启用。截图仍作为 `browser-screenshots` artifact 保存。CDP 触摸模拟不等同于手机实机测试。
 
 ## 尚未完成
 

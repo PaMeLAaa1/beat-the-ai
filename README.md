@@ -44,9 +44,11 @@ npm test
 
 ## 自动验证
 
-GitHub Actions 在 Node.js 20/22 上执行 22 个逻辑与输入测试、语法及资源引用检查、HTTP 检查；Node.js 22 额外运行 Chrome 自动冒烟，并上传 `browser-screenshots` 截图。
+GitHub Actions 在 Node.js 20/22 上执行 23 个逻辑与输入测试、语法及资源引用检查、HTTP 检查；Node.js 22 额外运行 Chrome 自动冒烟，并上传 `browser-screenshots` 截图。
 
 [查看运行结果](https://github.com/PaMeLAaa1/beat-the-ai/actions/workflows/ci.yml)。浏览器自动检查不等同于手机实机、Safari 或音频听感验收，具体记录见交接文档。
+
+已安装 Chrome 时，可在 Node.js 22+ 下执行 `PLAYTEST_DURATION_MS=120000 node scripts/browser-smoke.mjs`，额外跑两分钟完整动态连打。常规 CI 保留焦点、触摸取消、后台返回和 320/360/390px 布局检查。
 
 ## 开发与交接
 
