@@ -108,6 +108,7 @@ export function bindInput(target, game, {
   listen(win, 'pointerup', up);
   listen(win, 'pointercancel', up);
   listen(win, 'blur', releaseAll);
+  listen(target, 'blur', releaseAll);
   listen(target, 'keydown', keydown);
   listen(win, 'keyup', keyup);
   listen(doc, 'visibilitychange', visibility);

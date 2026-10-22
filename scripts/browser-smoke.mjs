@@ -79,6 +79,10 @@ async function click(selector) {
 async function screenshot(name) {
   const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
   await writeFile(join(output, name + '.png'), Buffer.from(shot.data, 'base64'));
+  if (process.env.PLAYTEST_INLINE_SCREENSHOTS === '1') {
+    const preview = await send('Page.captureScreenshot', { format: 'jpeg', quality: 65, captureBeyondViewport: false });
+    console.log('PLAYTEST_IMAGE ' + name + ' ' + preview.data);
+  }
 }
 try {
   await until(async () => { try { return (await fetch('http://127.0.0.1:3100/', { signal: AbortSignal.timeout(1500) })).ok; } catch { return false; } }, 'HTTP server');
@@ -108,6 +112,7 @@ try {
   await Promise.all([onceEvent('Page.loadEventFired'), send('Page.navigate', { url: 'http://127.0.0.1:3100/' })]);
   await until(async () => (await state())?.ready, 'game boot');
   assert.equal((await state()).value, 100);
+  await delay(600);
   await screenshot('desktop-initial');
   await click('#arena');
   await until(async () => (await state()).value === 96, 'single hit');
@@ -139,6 +144,152 @@ try {
   assert.equal(await evaluate("document.querySelector('#sound-toggle').getAttribute('aria-pressed')"), 'true');
   assert.equal(await evaluate("document.documentElement.classList.contains('reduced-motion')"), true);
   assert.deepEqual(exceptions, [], 'uncaught browser exceptions');
+
+  const playtestFailures = [];
+  async function checkCase(name, action) {
+    try { if (await action() !== false) console.log('PLAYTEST_PASS ' + name); }
+    catch (error) { playtestFailures.push(name + ': ' + error.message); console.error('PLAYTEST_FAIL ' + name + ': ' + error.message); }
+  }
+  async function reloadGame() {
+    await Promise.all([onceEvent('Page.loadEventFired'), send('Page.reload')]);
+    await until(async () => (await state())?.ready, 'fresh game');
+  }
+  async function hitCount() { return evaluate("Number(document.querySelector('[data-hits]').textContent)"); }
+  async function arenaPoint() {
+    return evaluate("(() => { const r=document.querySelector('#arena').getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()");
+  }
+  async function mouse(type, point) {
+    await send('Input.dispatchMouseEvent', { type, button: 'left', clickCount: 1, ...point });
+  }
+
+  await checkCase('Space stops when arena loses focus', async () => {
+    await reloadGame();
+    await evaluate("document.querySelector('#arena').focus()");
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: ' ', code: 'Space', windowsVirtualKeyCode: 32 });
+    await until(async () => (await hitCount()) === 1, 'focus test first hit');
+    await evaluate("document.querySelector('#sound-toggle').focus()");
+    const before = await hitCount();
+    await delay(450);
+    const after = await hitCount();
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: ' ', code: 'Space', windowsVirtualKeyCode: 32 });
+    assert.equal(after, before, 'moving focus to settings must release held Space');
+  });
+
+  for (const [width, height] of [[320, 568], [360, 640], [390, 844]]) {
+    await checkCase('layout ' + width + 'x' + height, async () => {
+      await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+      await reloadGame();
+      await delay(600);
+      const layout = await evaluate(`(() => {
+        const rect = selector => { const r=document.querySelector(selector).getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height,bottom:r.bottom,right:r.right}; };
+        return {overflow:document.documentElement.scrollWidth > innerWidth+1,
+          machine:rect('.machine-svg'), meter:rect('.plan-track'),
+          controls:[rect('#sound-toggle'),rect('#motion-toggle')]};
+      })()`);
+      console.log('PLAYTEST_LAYOUT ' + width + ' ' + JSON.stringify(layout));
+      assert.equal(layout.overflow, false);
+      assert.ok(layout.machine.y >= 0 && layout.machine.bottom <= height, 'AI must be visible on first screen');
+      assert.ok(layout.meter.y >= 0 && layout.meter.bottom <= height, 'progress must be visible');
+      for (const control of layout.controls) {
+        assert.ok(control.width >= 44 && control.height >= 44, 'touch controls must be at least 44px');
+        assert.ok(control.x >= 0 && control.right <= width, 'touch controls must fit viewport');
+      }
+      await screenshot('mobile-' + width + '-playtest');
+    });
+  }
+
+  await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 2 });
+  await checkCase('touch, second finger and cancellation', async () => {
+    await reloadGame();
+    const p = await arenaPoint();
+    const first = { ...p, id: 1 };
+    await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [first] });
+    await until(async () => (await hitCount()) === 1, 'touch first hit');
+    await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [first, { x:p.x+30, y:p.y+20, id:2 }] });
+    assert.equal(await hitCount(), 1, 'second finger must not add a hit');
+    await send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+    await delay(500);
+    assert.equal(await hitCount(), 1, 'touch cancellation must stop repeat');
+  });
+  await checkCase('touch drag outside and release', async () => {
+    await reloadGame();
+    const p = await arenaPoint();
+    await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{...p,id:1}] });
+    await until(async () => (await hitCount()) === 1, 'drag first hit');
+    await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{x:2,y:2,id:1}] });
+    await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    const before = await hitCount();
+    await delay(500);
+    assert.equal(await hitCount(), before, 'releasing outside arena must stop repeat');
+  });
+  await send('Emulation.setTouchEmulationEnabled', { enabled: false });
+
+  await checkCase('background and return', async () => {
+    await reloadGame();
+    const p = await arenaPoint();
+    const current = await send('Target.getTargetInfo');
+    let other;
+    try {
+      await mouse('mousePressed', p);
+      await until(async () => (await hitCount()) >= 1, 'background first hit');
+      other = await send('Target.createTarget', { url:'about:blank', background:false });
+      await send('Target.activateTarget', { targetId:other.targetId });
+      let hidden = false;
+      const deadline = Date.now()+2500;
+      while (Date.now()<deadline) {
+        if (await evaluate('document.hidden')) { hidden=true; break; }
+        await delay(100);
+      }
+      if (!hidden) {
+        console.log('PLAYTEST_SKIP background: headless Chrome did not hide the original tab');
+        return false;
+      }
+      const before = await hitCount();
+      await delay(700);
+      await send('Target.activateTarget', { targetId:current.targetInfo.targetId });
+      await until(async () => !(await evaluate('document.hidden')), 'return from background');
+      await delay(450);
+      assert.equal(await hitCount(), before, 'background return must not resume held input or catch up');
+    } finally {
+      await send('Target.activateTarget', { targetId:current.targetInfo.targetId });
+      if (other) await send('Target.closeTarget', { targetId:other.targetId });
+      await mouse('mouseReleased', p);
+    }
+  });
+
+  const stressDuration = Number(process.env.PLAYTEST_DURATION_MS || 0);
+  if (stressDuration > 0) {
+    assert.ok(Number.isFinite(stressDuration) && stressDuration <= 120000, 'stress duration must be at most two minutes');
+    await checkCase('continuous normal-effects play', async () => {
+      await evaluate('localStorage.clear()');
+      await reloadGame();
+      const p = await arenaPoint();
+      const began = Date.now();
+      let rounds = 0;
+      let maxEffects = 0;
+      while (Date.now()-began < stressDuration) {
+        await mouse('mousePressed', p);
+        await until(async () => {
+          const sample = await evaluate(`({value:Number(document.querySelector('[role="progressbar"]').getAttribute('aria-valuenow')),effects:document.querySelector('.fx-layer').childElementCount})`);
+          maxEffects = Math.max(maxEffects, sample.effects);
+          assert.ok(sample.effects <= 36, 'effect node limit');
+          return sample.value === 0;
+        }, 'stress round defeat', 6000);
+        await mouse('mouseReleased', p);
+        rounds += 1;
+        if (rounds === 1) await screenshot('normal-effects-takeover');
+        await until(async () => (await state()).value === 100, 'stress reboot', 4000);
+      }
+      await delay(800);
+      assert.equal(await evaluate("document.querySelector('.fx-layer').childElementCount"), 0, 'effects must clean up');
+      const hits = await hitCount();
+      assert.equal(hits, rounds*25, 'each round must count exactly 25 hits');
+      console.log('PLAYTEST_STRESS ' + JSON.stringify({durationMs:Date.now()-began, rounds,hits,maxEffects}));
+    });
+  }
+  assert.deepEqual(exceptions, [], 'uncaught browser exceptions during extended play');
+  assert.deepEqual(playtestFailures, [], 'extended playtest failures');
+
   console.log('Chrome smoke passed: boot, click, Space, hold, reboot, settings, persistence and mobile width.');
 } finally {
   for (const item of pending.values()) clearTimeout(item.timer);
