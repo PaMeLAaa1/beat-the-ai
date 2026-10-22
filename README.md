@@ -42,6 +42,12 @@ npm test
 | `dist/config.js`、`dist/lines.js` | 数值和台词 |
 | `tests/` | Node 内置测试 |
 
+## 自动验证
+
+GitHub Actions 在 Node.js 20/22 上执行 22 个逻辑与输入测试、语法及资源引用检查、HTTP 检查；Node.js 22 额外运行 Chrome 自动冒烟，并上传 `browser-screenshots` 截图。
+
+[查看运行结果](https://github.com/PaMeLAaa1/beat-the-ai/actions/workflows/ci.yml)。浏览器自动检查不等同于手机实机、Safari 或音频听感验收，具体记录见交接文档。
+
 ## 开发与交接
 
 [工作约定](AGENTS.md) · [实施计划](docs/PLAN.md) · [Agent 分工](docs/AGENT_ASSIGNMENTS.md) · [接口](docs/INTERFACES.md) · [验收](docs/ACCEPTANCE.md) · [交接状态](docs/HANDOFF.md)
