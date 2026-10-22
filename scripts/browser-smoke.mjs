@@ -36,6 +36,21 @@ let socket;
 const pending = new Map();
 let sequence = 0;
 const exceptions = [];
+const eventWaiters = new Map();
+function onceEvent(method) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { eventWaiters.delete(method); reject(new Error('CDP event timeout: ' + method)); }, 15000);
+    eventWaiters.set(method, { resolve, timer });
+  });
+}
+async function stop(child) {
+  if (!child.pid || child.exitCode !== null || child.signalCode !== null) return;
+  await new Promise(resolve => {
+    const timer = setTimeout(() => { child.kill('SIGKILL'); resolve(); }, 2000);
+    child.once('exit', () => { clearTimeout(timer); resolve(); });
+    child.kill('SIGTERM');
+  });
+}
 async function send(method, params = {}) {
   const id = ++sequence;
   return new Promise((resolve, reject) => {
@@ -66,12 +81,14 @@ async function screenshot(name) {
   await writeFile(join(output, name + '.png'), Buffer.from(shot.data, 'base64'));
 }
 try {
-  await until(async () => { try { return (await fetch('http://127.0.0.1:3100/')).ok; } catch { return false; } }, 'HTTP server');
-  const pages = await until(async () => { try { const list = await (await fetch('http://127.0.0.1:9222/json/list')).json(); return list.find(page => page.type === 'page'); } catch { return false; } }, 'Chrome debugger');
+  await until(async () => { try { return (await fetch('http://127.0.0.1:3100/', { signal: AbortSignal.timeout(1500) })).ok; } catch { return false; } }, 'HTTP server');
+  const pages = await until(async () => { try { const list = await (await fetch('http://127.0.0.1:9222/json/list', { signal: AbortSignal.timeout(1500) })).json(); return list.find(page => page.type === 'page'); } catch { return false; } }, 'Chrome debugger');
   socket = new WebSocket(pages.webSocketDebuggerUrl);
   socket.addEventListener('message', event => {
     const message = JSON.parse(event.data);
     if (message.method === 'Runtime.exceptionThrown') exceptions.push(message.params.exceptionDetails);
+    const waiter = eventWaiters.get(message.method);
+    if (waiter) { clearTimeout(waiter.timer); eventWaiters.delete(message.method); waiter.resolve(message.params); }
     const item = pending.get(message.id);
     if (!item) return;
     clearTimeout(item.timer);
@@ -80,13 +97,15 @@ try {
     else item.resolve(message.result);
   });
   await new Promise((resolve, reject) => {
-    socket.addEventListener('open', resolve, { once: true });
-    socket.addEventListener('error', reject, { once: true });
+    const timer = setTimeout(() => { reject(new Error('Chrome WebSocket handshake timeout')); socket.close(); }, 10000);
+    socket.addEventListener('open', () => { clearTimeout(timer); resolve(); }, { once: true });
+    socket.addEventListener('error', error => { clearTimeout(timer); reject(error); }, { once: true });
+    socket.addEventListener('close', () => { clearTimeout(timer); reject(new Error('Chrome WebSocket closed')); }, { once: true });
   });
   await send('Page.enable');
   await send('Runtime.enable');
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-  await send('Page.navigate', { url: 'http://127.0.0.1:3100/' });
+  await Promise.all([onceEvent('Page.loadEventFired'), send('Page.navigate', { url: 'http://127.0.0.1:3100/' })]);
   await until(async () => (await state())?.ready, 'game boot');
   assert.equal((await state()).value, 100);
   await screenshot('desktop-initial');
@@ -115,7 +134,7 @@ try {
   await delay(150);
   assert.equal((await state()).overflow, false, 'mobile layout must not overflow horizontally');
   await screenshot('mobile-390');
-  await send('Page.reload');
+  await Promise.all([onceEvent('Page.loadEventFired'), send('Page.reload')]);
   await until(async () => (await state())?.ready, 'reload after settings');
   assert.equal(await evaluate("document.querySelector('#sound-toggle').getAttribute('aria-pressed')"), 'true');
   assert.equal(await evaluate("document.documentElement.classList.contains('reduced-motion')"), true);
@@ -123,9 +142,9 @@ try {
   console.log('Chrome smoke passed: boot, click, Space, hold, reboot, settings, persistence and mobile width.');
 } finally {
   for (const item of pending.values()) clearTimeout(item.timer);
+  for (const item of eventWaiters.values()) clearTimeout(item.timer);
   socket?.close();
-  browser.kill();
-  server.kill();
-  await delay(200);
-  await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await Promise.all([stop(browser), stop(server)]);
+  try { await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
+  catch (error) { console.warn('Could not remove temporary Chrome profile: ' + error.message); }
 }
