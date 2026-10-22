@@ -35,6 +35,9 @@ jobs:
       - name: Browser smoke and screenshots
         if: matrix.node == '22'
         run: node scripts/browser-smoke.mjs
+        env:
+          PLAYTEST_DURATION_MS: '120000'
+          PLAYTEST_INLINE_SCREENSHOTS: '1'
       - name: Save browser screenshots
         if: always() && matrix.node == '22'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
